@@ -279,9 +279,22 @@ class DummyServiceAutoTimer(ServiceBase):
 
     """Fake Service to test automatic entrypoint timing"""
 
-    name = 'dummy_auto_timing'
+    name = 'dummy_service'
 
     statsd = StatsD('test')
+
+    @dummy
+    def method(self):
+        pass
+
+
+class DummyServiceAutoTimerDisabled(ServiceBase):
+
+    """Fake Service to test auto timing when the dependency is disabled"""
+
+    name = 'dummy_service'
+
+    statsd = StatsD('test-disabled')
 
     @dummy
     def method(self):
@@ -293,6 +306,7 @@ class TestAutoTimer(object):
     @pytest.fixture
     def stats_config(self, stats_config):
         stats_config['STATSD']['test']['auto_timer'] = True
+        stats_config['STATSD']['test-disabled']['auto_timer'] = True
         return stats_config
 
     @pytest.fixture
@@ -326,16 +340,13 @@ class TestAutoTimer(object):
         with patch('nameko_statsd.statsd_dep.StatsClient') as sc:
             yield sc
 
-    @pytest.fixture
-    def dummy_service(self, container_factory, stats_config):
+    def test_enabled_with_metaclass(
+        self, container_factory, stats_config, stats_client_cls
+    ):
         container = container_factory(DummyServiceAutoTimer, stats_config)
         container.start()
-        return container
 
-    def test_enabled_with_metaclass(
-        self, dummy_service, stats_client_cls
-    ):
-        with entrypoint_hook(dummy_service, 'method') as method:
+        with entrypoint_hook(container, 'method') as method:
             method()
 
         client = stats_client_cls.return_value
@@ -345,3 +356,18 @@ class TestAutoTimer(object):
             call('method').start(),
             call('method').stop(),
         ]
+
+    def test_disabled(
+        self, container_factory, stats_config, stats_client_cls
+    ):
+        container = container_factory(
+            DummyServiceAutoTimerDisabled, stats_config
+        )
+        container.start()
+
+        with entrypoint_hook(container, 'method') as method:
+            method()
+
+        client = stats_client_cls.return_value
+
+        assert client.timer.mock_calls == []
