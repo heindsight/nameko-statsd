@@ -70,6 +70,7 @@ class StatsD(DependencyProvider):
             name (str): The name associated to the instance.
         """
         self._key = key
+        self._auto_timers = {}
 
         if name is not None:
             warn(
@@ -80,11 +81,31 @@ class StatsD(DependencyProvider):
 
         super(StatsD, self).__init__(*args, **kwargs)
 
+    def worker_setup(self, worker_ctx):
+        super(StatsD, self).worker_setup(worker_ctx)
+
+        if not self.auto_timer:
+            return
+
+        entrypoint_name = worker_ctx.entrypoint.method_name
+
+        dependency = self.get_dependency(worker_ctx)
+        timer = dependency.timer(entrypoint_name)
+        self._auto_timers[worker_ctx] = timer
+        timer.start()
+
     def get_dependency(self, worker_ctx):
         return LazyClient(**self.config)
 
+    def worker_teardown(self, worker_ctx):
+        timer = self._auto_timers.pop(worker_ctx, None)
+
+        if timer is not None:
+            timer.stop()
+
     def setup(self):
         self.config = self.get_config()
+        self.auto_timer = self.config.pop('auto_timer', False)
         return super(StatsD, self).setup()
 
     def get_config(self):

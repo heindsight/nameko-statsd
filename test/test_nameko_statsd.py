@@ -273,3 +273,75 @@ class TestTimer(object):
         assert stats_client_cls_tcp.call_args_list == []
         assert client.timer.call_args_list == []
         assert sentinel.call_args_list == [call(3, 1, 4, name='pi')]
+
+
+class DummyServiceAutoTimer(ServiceBase):
+
+    """Fake Service to test automatic entrypoint timing"""
+
+    name = 'dummy_auto_timing'
+
+    statsd = StatsD('test')
+
+    @dummy
+    def method(self):
+        pass
+
+
+class TestAutoTimer(object):
+
+    @pytest.fixture
+    def stats_config(self, stats_config):
+        stats_config['STATSD']['test']['auto_timer'] = True
+        return stats_config
+
+    @pytest.fixture
+    def lazy_client_cls(self):
+        with patch('nameko_statsd.statsd_dep.LazyClient') as lc:
+            yield lc
+
+    def test_get_dependency(self, lazy_client_cls, stats_config):
+        statsd = StatsD('test')
+        statsd.container = Mock()
+        statsd.container.config = stats_config
+        statsd.setup()
+
+        worker_ctx = Mock()
+
+        dep = statsd.get_dependency(worker_ctx)
+
+        assert lazy_client_cls.call_args_list == [
+            call(
+                host='statsd.host',
+                port=1234,
+                prefix='statsd.prefix',
+                maxudpsize=1024,
+                enabled=True,
+            )
+        ]
+        assert dep == lazy_client_cls.return_value
+
+    @pytest.fixture
+    def stats_client_cls(self):
+        with patch('nameko_statsd.statsd_dep.StatsClient') as sc:
+            yield sc
+
+    @pytest.fixture
+    def dummy_service(self, container_factory, stats_config):
+        container = container_factory(DummyServiceAutoTimer, stats_config)
+        container.start()
+        return container
+
+    def test_enabled_with_metaclass(
+        self, dummy_service, stats_client_cls
+    ):
+        with entrypoint_hook(dummy_service, 'method') as method:
+            method()
+
+        client = stats_client_cls.return_value
+
+        assert client.timer.mock_calls == [
+            call('method'),
+            call('method').start(),
+            call('method').stop(),
+        ]
