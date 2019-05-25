@@ -287,6 +287,14 @@ class DummyServiceAutoTimer(ServiceBase):
     def method(self):
         pass
 
+    @dummy
+    def another(self):
+        pass
+
+    @dummy
+    def yet_another(self):
+        pass
+
 
 class DummyServiceAutoTimerDisabled(ServiceBase):
 
@@ -306,6 +314,9 @@ class TestAutoTimer(object):
     @pytest.fixture
     def stats_config(self, stats_config):
         stats_config['STATSD']['test']['auto_timer'] = True
+        stats_config['STATSD']['test']['no_auto_timer_entrypoints'] = [
+            'another', 'yet_another'
+        ]
         stats_config['STATSD']['test-disabled']['auto_timer'] = True
         return stats_config
 
@@ -367,6 +378,22 @@ class TestAutoTimer(object):
 
         with entrypoint_hook(container, 'method') as method:
             method()
+
+        client = stats_client_cls.return_value
+
+        assert client.timer.mock_calls == []
+
+    @pytest.mark.parametrize('entrypoint', ['another', 'yet_another'])
+    def test_exclude_entrypoints_from_auto_timer(
+        self, container_factory, stats_config, stats_client_cls, entrypoint
+    ):
+        container = container_factory(
+            DummyServiceAutoTimer, stats_config
+        )
+        container.start()
+
+        with entrypoint_hook(container, entrypoint) as entrypt:
+            entrypt()
 
         client = stats_client_cls.return_value
 

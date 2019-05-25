@@ -84,15 +84,16 @@ class StatsD(DependencyProvider):
     def worker_setup(self, worker_ctx):
         super(StatsD, self).worker_setup(worker_ctx)
 
-        if not self.auto_timer:
-            return
-
         entrypoint_name = worker_ctx.entrypoint.method_name
 
-        dependency = self.get_dependency(worker_ctx)
-        timer = dependency.timer(entrypoint_name)
-        self._auto_timers[worker_ctx] = timer
-        timer.start()
+        if (
+            self.auto_timer
+            and entrypoint_name not in self._no_auto_timer_entrypoints
+        ):
+            dependency = self.get_dependency(worker_ctx)
+            timer = dependency.timer(entrypoint_name)
+            self._auto_timers[worker_ctx] = timer
+            timer.start()
 
     def get_dependency(self, worker_ctx):
         return LazyClient(**self.config)
@@ -106,6 +107,9 @@ class StatsD(DependencyProvider):
     def setup(self):
         self.config = self.get_config()
         self.auto_timer = self.config.pop('auto_timer', False)
+        self._no_auto_timer_entrypoints = self.config.pop(
+            'no_auto_timer_entrypoints', []
+        )
         return super(StatsD, self).setup()
 
     def get_config(self):
