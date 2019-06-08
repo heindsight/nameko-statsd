@@ -87,7 +87,7 @@ class StatsD(DependencyProvider):
         entrypoint_name = worker_ctx.entrypoint.method_name
 
         if (
-            self.auto_timer
+            self.auto_timer_enabled
             and entrypoint_name not in self._no_auto_timer_entrypoints
         ):
             dependency = self.get_dependency(worker_ctx)
@@ -106,7 +106,7 @@ class StatsD(DependencyProvider):
 
     def setup(self):
         self.config = self.get_config()
-        self.auto_timer = self.config.pop('auto_timer', False)
+        self.auto_timer_enabled = self.config.pop('auto_timer', False)
         self._no_auto_timer_entrypoints = self.config.pop(
             'no_auto_timer_entrypoints', []
         )
